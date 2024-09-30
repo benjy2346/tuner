@@ -1,66 +1,95 @@
-'use client';
-import { useEffect, useRef, useState } from 'react';
+'use client'
+import React ,{ useState, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
+import { ArrowUp, ArrowDown, Minus } from "lucide-react"
 
-export default function Tuner() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [feedback,setFeedback] = useState<string | null>(null);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+export default function Component() {
+  const [targetFrequency, setTargetFrequency] = useState(440)
+  const [currentFrequency, setCurrentFrequency] = useState(440)
+  const [selectedNote, setSelectedNote] = useState('A')
+  const [pitchDifference, setPitchDifference] = useState<'higher' | 'lower' | 'match'>('match')
 
   useEffect(() => {
-    // Create a WebSocket connection to the Flask back-end
-    const ws = new WebSocket('ws://192.168.10.85:5000/audio-stream');
-    setSocket(ws);
+    comparePitch()
+  }, [currentFrequency, targetFrequency])
 
-    // Cleanup WebSocket connection on component unmount
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, []);
+  const handleNoteClick = (note: string) => {
+    setSelectedNote(note)
+    const noteIndex = notes.indexOf(note)
+    const newFrequency = 440 * Math.pow(2, (noteIndex - 9) / 12)
+    setTargetFrequency(Math.round(newFrequency * 100) / 100)
+  }
 
-  const startPitchDetection = async () => {
-    if (!socket) return;
+  const handleCurrentFrequencyChange = (newFrequency: number[]) => {
+    setCurrentFrequency(newFrequency[0])
+  }
 
-    try {
-      // Access the user's microphone
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      const audioCtx = new (window.AudioContext || window.AudioContext)();
-      audioContextRef.current = audioCtx;
-
-      const microphone = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-
-      microphone.connect(analyser);
-
-      const bufferLength = analyser.fftSize;
-      const dataArray = new Float32Array(bufferLength);
-
-      const sendAudioData = () => {
-        analyser.getFloatTimeDomainData(dataArray);
-        
-        // Send the audio data to the server over WebSocket
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(dataArray.buffer); // Send raw audio data
-        }
-
-        requestAnimationFrame(sendAudioData); // Continuously capture audio data
-      };
-
-      sendAudioData();
-    } catch (error) {
-      console.error('Error accessing microphone:', error);
+  const comparePitch = () => {
+    const difference = currentFrequency - targetFrequency
+    if (Math.abs(difference) < 0.5) {
+      setPitchDifference('match')
+    } else if (difference > 0) {
+      setPitchDifference('higher')
+    } else {
+      setPitchDifference('lower')
     }
-  };
+  }
 
   return (
-    <div style={{ textAlign: 'center', marginTop: '50px' }}>
-      <h1>Real-Time Pitch Tuner</h1>
-      <p>{feedback ? feedback : 'Press the button to start detecting pitch.'}</p>
-      <button onClick={startPitchDetection}>Start Pitch Detection</button>
+    <div className="p-6 max-w-md mx-auto bg-white rounded-xl shadow-md space-y-4">
+      <h1 className="text-2xl font-bold text-center">Online Tuner UI</h1>
+      <div className="grid grid-cols-6 gap-2">
+        {notes.map((note) => (
+          <Button
+            key={note}
+            onClick={() => handleNoteClick(note)}
+            variant={note === selectedNote ? "default" : "outline"}
+            className="w-full"
+          >
+            {note}
+          </Button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium">Target: {targetFrequency.toFixed(2)} Hz</span>
+          <span className="text-sm font-medium">Selected Note: {selectedNote}</span>
+        </div>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">Current Frequency: {currentFrequency.toFixed(2)} Hz</span>
+          <Slider
+            min={220}
+            max={880}
+            step={0.01}
+            value={[currentFrequency]}
+            onValueChange={handleCurrentFrequencyChange}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-center space-x-2">
+        <span className="text-sm font-medium">Pitch is:</span>
+        {pitchDifference === 'higher' && (
+          <div className="flex items-center text-red-500">
+            <ArrowUp className="w-5 h-5 mr-1" />
+            <span>Too High</span>
+          </div>
+        )}
+        {pitchDifference === 'lower' && (
+          <div className="flex items-center text-blue-500">
+            <ArrowDown className="w-5 h-5 mr-1" />
+            <span>Too Low</span>
+          </div>
+        )}
+        {pitchDifference === 'match' && (
+          <div className="flex items-center text-green-500">
+            <Minus className="w-5 h-5 mr-1" />
+            <span>In Tune</span>
+          </div>
+        )}
+      </div>
     </div>
-  );
+  )
 }
